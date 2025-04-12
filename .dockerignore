@@ -1,0 +1,9 @@
+.git*
+.idea
+.DS_Store
+.pytest_cache
+.docker-sync
+*docker-compose*
+
+/docker
+!/docker/deployment/

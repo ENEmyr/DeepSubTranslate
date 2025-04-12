@@ -1,0 +1,6 @@
+pyyaml
+rich
+pysubs2
+ffmpeg-python
+requests
+pytest
