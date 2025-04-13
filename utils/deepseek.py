@@ -1,6 +1,8 @@
 import yaml
 import pathlib
 import requests
+from openai import OpenAI
+from openai.types.chat import ChatCompletionMessage
 
 
 class DeepSeekTranslator:
@@ -40,9 +42,9 @@ class DeepSeekTranslator:
                 config = yaml.safe_load(f)
 
         # Use provided arguments or fallback to config
-        self.api_key = api_key or config.get("api_key", "")
-        self.endpoint = endpoint or config.get("endpoint", "")
-        self.model = model or config.get("model", "")
+        self._api_key = api_key or config.get("api_key", "")
+        self._endpoint = endpoint or config.get("endpoint", "")
+        self._model = model or config.get("model", "")
         self.source_lang = source_language or config.get("system_prompt", {}).get(
             "variables", {}
         ).get("source_language", "")
@@ -54,7 +56,7 @@ class DeepSeekTranslator:
         ).get("description", "")
 
         # Validate required fields
-        if not all([self.api_key, self.endpoint, self.model]):
+        if not all([self._api_key, self._endpoint, self._model]):
             raise ValueError("API key, endpoint, and model are required.")
         if not self.system_prompt_template:
             raise ValueError("A valid system prompt template is required.")
@@ -72,6 +74,9 @@ class DeepSeekTranslator:
         # Format system prompt with languages
         self._update_prompt()
         self.clear_chat_history()
+
+        # Set up openai client
+        self._client = OpenAI(api_key=self._api_key, base_url=self._endpoint)
 
     def _update_prompt(self):
         """Internal method to update the formatted system prompt."""
@@ -106,9 +111,9 @@ class DeepSeekTranslator:
 
     def get_chat_history(self):
         """Return the current chat history, including the system prompt."""
-        return self.chat_history
+        return self._chat_history
 
-    def update_chat_history(self, hist: dict | list[dict]):
+    def update_chat_history(self, hist: dict | list[dict] | ChatCompletionMessage):
         """
         Append message(s) to the chat history.
 
@@ -116,45 +121,54 @@ class DeepSeekTranslator:
             hist (dict or list): Message(s) to add, each must be a dict with 'role' and 'content'.
         """
         if isinstance(hist, dict):
-            self.chat_history.append(hist)
+            self._chat_history.append(hist)
         elif isinstance(hist, list):
             if not all(isinstance(h, dict) for h in hist):
                 raise TypeError("Each chat history item must be a dictionary.")
-            self.chat_history.extend(hist)
+            self._chat_history.extend(hist)
+        elif isinstance(hist, ChatCompletionMessage):
+            self._chat_history.append({"role": hist.role, "content": hist.content})
         else:
             raise TypeError(
-                "Chat history must be a dictionary or list of dictionaries."
+                "Chat history must be a dictionary, list of dictionaries or instance of ChatCompletionMessage."
             )
 
     def clear_chat_history(self):
         """Reset the chat history to include only the system prompt."""
-        self.chat_history = [{"role": "system", "content": self.system_prompt}]
+        self._chat_history = [{"role": "system", "content": self.system_prompt}]
 
-    def translate(self, text: str) -> str:
+    def get_translation_history(self) -> list[str]:
+        """Return the current translation history."""
+        translation_history = []
+        for message in self._chat_history:
+            if message["role"] == "assistant":
+                translation_history.extend(message["content"].split("\\n"))
+        return translation_history
+
+    def translate(self, text: str | list[str]) -> str | list[str]:
         """
         Translate the given text using DeepSeek API.
 
         Args:
-            text (str): The input text to translate.
+            text (str) | list[str]: The input text to translate.
 
         Returns:
             str: The translated text.
         """
-        self.update_chat_history({"role": "user", "content": text})
+        assert type(text) in [str, list], "text must be str or list"
 
-        response = requests.post(
-            self.endpoint,
-            json={
-                "model": self.model,
-                "messages": self.chat_history,
-                "stream": False,
-            },
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": self.api_key,
-            },
+        if type(text) == list:
+            self.update_chat_history({"role": "user", "content": "\\n".join(text)})
+        else:
+            self.update_chat_history({"role": "user", "content": text})
+
+        response = self._client.chat.completions.create(
+            model=self._model,
+            messages=self._chat_history,  # pyright: ignore
+            stream=False,
         )
-        response.raise_for_status()
-        translated_content = response.json()["choices"][0]["message"]["content"]
-        self.update_chat_history({"role": "assistant", "content": translated_content})
+        self.update_chat_history(response.choices[0].message)
+        translated_content = response.choices[0].message.content
+        if type(text) == list:
+            translated_content = translated_content.split("\\n")
         return translated_content
