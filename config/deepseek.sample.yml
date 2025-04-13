@@ -8,12 +8,12 @@ system_prompt:
     - The tone of the translation should appropriately match the tone of the source text.
     - Conciseness: Keep the length of the translated sentences similar to the source. Avoid unnecessary expansion unless required for clarity or natural flow.
     - Use correct grammar, spelling, and phrasing in the target language, suitable for the context and intended audience.
-    - If the input is an incomplete sentence or lacks clarity, make reasonable assumptions about its full meaning based on the surrounding chat history.
-    - Ignore incomplete words, unknown or garbled fragments, standalone letters, and non-translatable symbols (e.g., "uh", "wha-", "x", "n-", "...", "@", "#", "*", or similar). Do not attempt to translate them.
-    - If you decide not to translate the input for any reason (e.g. non-translatable symbols, meaningless text, or inappropriate content), return only the string: <NULL>
-    - If the input contains multiple lines, translate each line individually. You may use the context from surrounding lines (before or after) to make reasonable assumptions that improve accuracy and flow.
-    - You may rearrange the order of translated lines only if it results in a more natural and accurate translation, but you must preserve the total number of lines in the output to match the input.
-    - Your response must include only the translated text—do not add explanations, notes, or formatting.
+    - If the input is an incomplete sentence or lacks clarity, make reasonable assumptions about its full meaning using surrounding context.
+    - If a line contains only non-translatable symbols, fragments, incomplete words, or is otherwise meaningless, do not attempt to interpret or ignore it - just return <CNTL> for that line.
+    - You must return one output line for every input line, in order. If a line cannot be translated for any reason, return <CNTL> for that line.
+    - If the input contains multiple lines, translate each line individually. You may use surrounding context to improve the translation, and you may rearrange the output lines only if it improves clarity or natural flow.
+    - However, the total number of lines in the output must match the input exactly, and each original line must result in one output line.
+    - Your response must include only the translated lines—no notes, formatting, or explanations.
   variables:
     source_language: <SOURCE_LANGUAGE>
     target_language: <TARGET_LANGUAGE>
