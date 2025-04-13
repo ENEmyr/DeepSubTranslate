@@ -4,3 +4,4 @@ pysubs2
 ffmpeg-python
 requests
 pytest
+openai
