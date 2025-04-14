@@ -1,28 +1,17 @@
 import pysubs2
+import re
 from pathlib import Path
 from utils.deepseek import DeepSeekTranslator
 
 
 class PreprocessSubtitle:
-    def __init__(self, text: str):
-        # For ASS format
-        # most of the time, the text is in the form of "{\\an8}sample \Ntext"
-        # which is contains override block {} in front of the text
-        # and may contain \N, \n or \h which is a special character in ass format
-        # more detail : https://aegi.vmoe.info/docs/3.1/ASS_Tags/
-        #
-        # For srt format
-        # mostly the text may be in form like '{\\i1}test\\Ntext,{\\i0}'
+    SPECIAL_CHARS = ("\\N", "\\n", "\\h")
 
-        assert len(text) > 0, "text can't be empty string"
-        self._special_character = ("\\N", "\\n", "\\h")
+    def __init__(self, text: str):
+        assert text, "text can't be an empty string"
         self._text = text
         self._open_block, self._close_block = self._extract_override_blocks()
-
-        self._clean_special_character()
-        self._text = self._text.replace(self._open_block, "").replace(
-            self._close_block, ""
-        )
+        self._text = self._clean_text(self._text)
 
     @property
     def content(self) -> str:
@@ -30,61 +19,45 @@ class PreprocessSubtitle:
 
     @content.setter
     def content(self, value: str) -> None:
-        assert type(value) == str, "value argument must be string"
+        assert isinstance(value, str), "value must be a string"
         self._text = value
 
     @property
     def subtitle_line(self) -> str:
-        return self._open_block + self._text + self._close_block
+        return f"{self._open_block}{self._text}{self._close_block}"
 
-    def _clean_special_character(self) -> None:
-        for spc in self._special_character:
-            self._text = self._text.replace(spc, "")
+    def _clean_text(self, text: str) -> str:
+        for char in self.SPECIAL_CHARS:
+            text = text.replace(char, "")
+        return text.replace(self._open_block, "").replace(self._close_block, "")
 
     def _extract_override_blocks(self) -> tuple[str, str]:
-        blocks = []
-        idx = 0
-        for c in self._text:
-            if c == "{":
-                blocks.append(c)
-            elif len(blocks) - 1 == idx:
-                blocks[idx] += c
-                if c == "}":
-                    idx += 1
-            else:
-                continue
-        if len(blocks) == 0:
-            return "", ""
-        return blocks[0], blocks[-1]
+        matches = re.findall(r"\{.*?\}", self._text)
+        return (matches[0], matches[-1]) if matches else ("", "")
 
 
 class PreprocessSubtitles:
-    def __init__(self, texts: list[pysubs2.ssaevent.SSAEvent]):
-        assert len(texts) > 0, "texts can't be empty list"
-        assert type(texts) == list, "texts must be list of SSAEvent"
+    def __init__(self, events: list[pysubs2.ssaevent.SSAEvent]):
+        assert events and isinstance(events, list), "Input must be a non-empty list"
         assert all(
-            [isinstance(e, pysubs2.ssaevent.SSAEvent) for e in texts]
-        ), "texts must be list of SSAEvent"
-        self._lines = [PreprocessSubtitle(line.text) for line in texts]
+            isinstance(e, pysubs2.ssaevent.SSAEvent) for e in events
+        ), "All items must be SSAEvent instances"
+        self._lines = [PreprocessSubtitle(event.text) for event in events]
 
     @property
     def contents(self) -> list[str]:
         return [line.content for line in self._lines]
 
     @contents.setter
-    def contents(self, value: list[str]) -> None:
-        assert (
-            type(value) == list
-        ), f"value argument must be list of string : {type(value)}"
-        # assert len(value) == len(
-        #     self._lines
-        # ), f"value argument must be same length as lines: (lines, {len(self._lines)}) - (value, {len(value)})"
-        for i, v in enumerate(value):
-            assert type(v) == str, "value argument must be list of string"
-            if i > len(self._lines) - 1:
+    def contents(self, values: list[str]) -> None:
+        assert isinstance(values, list), "Value must be a list of strings"
+        for i, value in enumerate(values):
+            if i >= len(self._lines):
                 break
-            if "<CNTL>" not in v:
-                self._lines[i].content = v
+            if value == self._lines[i].content:
+                continue
+            if "<CNTL>" not in value:
+                self._lines[i].content = value
 
     @property
     def subtitle_lines(self) -> list[str]:
@@ -104,48 +77,50 @@ def translate_subtitle(
     output_path: str = "",
     batch_size: int = 100,
 ) -> Path:
-    assert (
-        sub_path.suffix == ".srt" or sub_path.suffix == ".ass"
-    ), "Unsupported subtitle format"
-    assert type(batch_size) == int, "batch size must be int"
-    assert batch_size > 0, "batch size must be greater than 0"
+    assert sub_path.suffix in (".srt", ".ass"), "Unsupported subtitle format"
+    assert isinstance(batch_size, int) and batch_size > 0, "Invalid batch size"
 
     subtitle = pysubs2.load(str(sub_path))
+
+    def update_progress(tl_type: str, text_in: str, text_out: str, i: int, total: int):
+        progress.update(
+            progress_task,
+            description=f'[yellow]⏳ {tl_type} Translate "{text_in[:20]}..." => "{text_out[:20]}..." : ({i}/{total})',
+        )
+
     if batch_size == 1:
         for i, line in enumerate(subtitle.events):
-            cleaned = PreprocessSubtitle(line.text)
-            translate_text = dst.translate(cleaned.content)
-            progress.update(
-                progress_task,
-                description=f'[yellow]⏳ Translate "{cleaned.content[:20]}..." => "{translate_text[:20]}..." : ({i+1}/{len(subtitle.events)})',
+            processed = PreprocessSubtitle(line.text)
+            translated = dst.translate(processed.content)
+            update_progress(
+                "", processed.content, translated, i + 1, len(subtitle.events)
             )
-            if "<CNTL>" not in translate_text:
-                cleaned.content = translate_text
-                line.text = cleaned.subtitle_line
+            if translated == processed.content:
+                continue
+            if "<CNTL>" not in translated:
+                processed.content = translated
+                line.text = processed.subtitle_line
     else:
-        batches = list(batch_list(subtitle.events, batch_size))
-        for i, batch in enumerate(batches):
+        for i, batch in enumerate(batch_list(subtitle.events, batch_size)):
             offset = i * batch_size
-            cleaned_batch = PreprocessSubtitles(batch)
-            translated_texts = dst.translate(cleaned_batch.contents)
-            progress.update(
-                progress_task,
-                description=f'[yellow]⏳ Batch Translate "{cleaned_batch.contents[0][:20]}..." => "{translated_texts[0][:20]}..." : ({i+1}/{len(batches)})',
+            processed_batch = PreprocessSubtitles(batch)
+            translated_texts = dst.translate(processed_batch.contents)
+            update_progress(
+                "Batch",
+                processed_batch.contents[0],
+                translated_texts[0],
+                i + 1,
+                round(len(subtitle.events) / batch_size),
             )
             try:
-                cleaned_batch.contents = translated_texts
+                processed_batch.contents = translated_texts
             except Exception as e:
-                print(
-                    f"Error while tried to re-assign batch content in batch translation: {e}"
-                )
+                print(f"Error reassigning batch content: {e}")
                 print(dst.get_chat_history())
                 exit(1)
-            for j, line in enumerate(cleaned_batch.subtitle_lines):
-                subtitle.events[offset + j].text = line
-    output_path = (
-        str(sub_path.with_name(f"translated{sub_path.suffix}"))
-        if output_path == ""
-        else output_path
-    )
+            for j, line_text in enumerate(processed_batch.subtitle_lines):
+                subtitle.events[offset + j].text = line_text
+
+    output_path = output_path or str(sub_path.with_name(f"translated{sub_path.suffix}"))
     subtitle.save(output_path)
     return Path(output_path)
