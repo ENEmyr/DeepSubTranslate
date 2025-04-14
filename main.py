@@ -43,8 +43,8 @@ arg_parser.add_argument(
     "--batch_size",
     dest="batch_size",
     type=int,
-    help="Batch size for translation (default: 100).",
-    default=100,
+    help="Batch size for translation (default: 1).",
+    default=1,
 )
 arg_parser.add_argument(
     "-e",
@@ -119,7 +119,7 @@ def process_video(
             dst,
             progress_task,
             progress,
-            output_path=f"{file_path.stem}{sub_info[0].suffix}",
+            output_path=str(file_path.with_suffix(sub_info[0].suffix)),
             batch_size=batch_size,
         )
         translated_subs.append((translated_sub, sub_info[1], target_track))
