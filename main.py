@@ -41,9 +41,12 @@ arg_parser.add_argument(
 
 
 def clean_files(files: list[str | Path]) -> None:
-    for file in files:
-        if os.path.exists(file):
-            os.remove(file)
+    try:
+        for file in files:
+            if os.path.exists(file):
+                os.remove(file)
+    except Exception as e:
+        print(f"Error cleaning files {e}: {files}")
 
 
 def process_video(
@@ -80,10 +83,12 @@ def process_video(
     progress.update(
         progress_task, description=f"[yellow]⏳ Extracting subtitles: {file_path.name}"
     )
+    clean_list = []
+
     source_subs = extract_subtitles(file_path, source_track)
+    clean_list += [e[0] for e in source_subs]
 
     translated_subs = []
-    clean_list = []
 
     for i, sub_info in enumerate(source_subs):
         # sub_info[0] = subtitle_path
@@ -94,16 +99,13 @@ def process_video(
         )
         translated_sub = translate_subtitle(sub_info[0], dst, progress_task, progress)
         translated_subs.append((translated_sub, sub_info[1], target_track))
-
-    clean_list += source_subs
+        clean_list.append(translated_sub)
 
     progress.update(
         progress_task,
         description=f"[yellow]⏳ Embedding {len(translated_subs)} subtitles : {file_path.name}",
     )
     embed_subtitle(file_path, translated_subs)
-
-    clean_list += translated_subs
 
     progress.update(
         progress_task,
