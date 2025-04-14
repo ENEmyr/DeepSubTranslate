@@ -35,6 +35,7 @@ class DeepSeekTranslator:
             source_language (str): Language to translate from.
             target_language (str): Language to translate to.
             system_prompt (str): Custom system prompt template.
+            context_limiter (float): Multiplier for context length.
             config_path (str): Path to YAML config file.
         Raises:
             ValueError: If required values are missing.
