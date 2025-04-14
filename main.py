@@ -38,6 +38,14 @@ arg_parser.add_argument(
     help="Target subtitle track language (e.g., 'tha').",
     default="tha",
 )
+arg_parser.add_argument(
+    "-b",
+    "--batch_size",
+    dest="batch_size",
+    type=int,
+    help="Batch size for translation (default: 100).",
+    default=100,
+)
 
 
 def clean_files(files: list[str | Path]) -> None:
@@ -53,6 +61,7 @@ def process_video(
     file_path: Path,
     source_track: str,
     target_track: str,
+    batch_size: int,
     progress_task,
     progress: Progress,
 ):
@@ -97,7 +106,9 @@ def process_video(
             progress_task,
             description=f"[yellow]⏳ Translating ({i + 1}/{len(source_subs)}): {file_path.name}",
         )
-        translated_sub = translate_subtitle(sub_info[0], dst, progress_task, progress)
+        translated_sub = translate_subtitle(
+            sub_info[0], dst, progress_task, progress, batch_size=batch_size
+        )
         translated_subs.append((translated_sub, sub_info[1], target_track))
         clean_list.append(translated_sub)
 
@@ -142,7 +153,12 @@ def main():
         task = progress.add_task("[cyan]Processing videos...", total=len(video_files))
         for video_file in video_files:
             process_video(
-                Path(video_file), args.source_track, args.target_track, task, progress
+                Path(video_file),
+                args.source_track,
+                args.target_track,
+                args.batch_size,
+                task,
+                progress,
             )
 
 
