@@ -21,6 +21,7 @@ class DeepSeekTranslator:
         source_language: str = "",
         target_language: str = "",
         system_prompt: str = "",
+        context_limiter: float = 0.7,
         config_path: str = "config/deepseek.yml",
     ):
         """
@@ -50,6 +51,7 @@ class DeepSeekTranslator:
         self._endpoint = endpoint or config.get("endpoint", "")
         self._model = model or config.get("model", "")
         self._context_length = context_length or config.get("context_length", 0)
+        self._context_length *= round(context_limiter)
         self.source_lang = source_language or config.get("system_prompt", {}).get(
             "variables", {}
         ).get("source_language", "")
