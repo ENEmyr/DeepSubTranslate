@@ -186,7 +186,8 @@ class DeepSeekTranslator:
 
         # Trim history if total tokens exceed model limit
         while total_tokens > self._context_length and len(self._chat_history) > 1:
-            self._chat_history.pop(0)  # Remove oldest message
+            # Remove oldest message, maintaining system prompt
+            self._chat_history.pop(1)
             temp_history = self._chat_history + [new_message]
             total_tokens = self._count_tokens(temp_history)
 
