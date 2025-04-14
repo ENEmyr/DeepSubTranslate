@@ -1,5 +1,6 @@
 import pysubs2
 import re
+from math import ceil
 from pathlib import Path
 from utils.deepseek import DeepSeekTranslator
 
@@ -110,7 +111,7 @@ def translate_subtitle(
                 processed_batch.contents[0],
                 translated_texts[0],
                 i + 1,
-                round(len(subtitle.events) / batch_size),
+                ceil(len(subtitle.events) / batch_size),
             )
             try:
                 processed_batch.contents = translated_texts
